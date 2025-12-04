@@ -117,7 +117,7 @@ import express from "express"
 import { Cloudinary } from "@cloudinary/url-gen"
 import { createClient } from "@supabase/supabase-js"
 import dotenv from "dotenv"
-import fetch from "node-fetch";
+
 
 dotenv.config()
 const app = express()
@@ -209,25 +209,34 @@ app.get("/models/:productId/:skuCode", async (req, res) => {
   const { productId, skuCode } = req.params;
 
   try {
-    const publicId = await getPublicIdFromDb(productId, skuCode, 9999);
+    // Fetch public_id for image_no = 9999
+    const { data, error } = await supabase
+      .from("product")
+      .select("public_id")
+      .eq("product_id", productId)
+      .eq("sku_code", skuCode)
+      .eq("image_no", 9999)
+      .single();
 
-    if (!publicId) {
-      return res.status(404).json({ error: "3D Model not found" });
+    if (error || !data) {
+      return res.status(404).send("3D Model not found");
     }
 
+    const publicId = data.public_id;
     const glbUrl = `https://res.cloudinary.com/${process.env.CLOUDNAME}/raw/upload/${publicId}.glb`;
 
-    // Fetch GLB as buffer (works on Vercel)
+    // Native fetch (Vercel supports it)
     const cloudRes = await fetch(glbUrl);
 
     if (!cloudRes.ok) {
-      return res.status(500).send("Failed to fetch GLB");
+      console.error(await cloudRes.text());
+      return res.status(500).send("Failed to fetch GLB from Cloudinary");
     }
 
     const arrayBuffer = await cloudRes.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // CORS fix + correct headers
+    // CORS + correct headers
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Content-Type", "model/gltf-binary");
     res.setHeader("Content-Length", buffer.length);
@@ -236,9 +245,10 @@ app.get("/models/:productId/:skuCode", async (req, res) => {
 
   } catch (err) {
     console.error("MODEL ROUTE ERROR:", err);
-    return res.status(500).send("Internal server error");
+    return res.status(500).send("Internal Server Error");
   }
 });
+
 
 
 /* =========== Health / Home =========== */
