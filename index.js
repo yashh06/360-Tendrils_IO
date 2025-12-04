@@ -222,28 +222,29 @@ app.get("/models/:productId/:skuCode", async (req, res) => {
       return res.status(404).send("Model not found");
     }
 
-    const publicId = data.public_id; // e.g. "71645/.../model"
+    const publicId = data.public_id;
 
-    // Cloudinary RAW URL (NO REDIRECTS)
+    // Cloudinary RAW URL
     const glbUrl = `https://res.cloudinary.com/${process.env.CLOUDNAME}/raw/upload/${publicId}.glb`;
 
-    // CORS FIX — model-viewer REQUIRE THIS!
+    // CORS REQUIRED
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-    // Instead of redirect, stream the GLB directly!
+    // fetch GLB
     const response = await fetch(glbUrl);
+    if (!response.ok) return res.status(500).send("Cloudinary fetch failed");
 
-    if (!response.ok) {
-      return res.status(500).send("Cloudinary fetch failed");
-    }
-
-    res.setHeader("Content-Type", "model/gltf-binary");
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
+    // THESE TWO HEADERS ARE CRITICAL
+    res.setHeader("Content-Type", "model/gltf-binary");
+    res.setHeader("Content-Disposition", "inline"); // prevents download popup
+
     res.send(buffer);
+
   } catch (err) {
     console.error("3D model route error:", err);
     res.status(500).send("Server error");
