@@ -117,6 +117,7 @@ import express from "express"
 import { Cloudinary } from "@cloudinary/url-gen"
 import { createClient } from "@supabase/supabase-js"
 import dotenv from "dotenv"
+import fetch from "node-fetch";
 
 dotenv.config()
 const app = express()
@@ -211,26 +212,31 @@ app.get("/models/:productId/:skuCode", async (req, res) => {
     const publicId = await getPublicIdFromDb(productId, skuCode, 9999);
 
     if (!publicId) {
-      return res.status(404).send("3D Model not found");
+      return res.status(404).json({ error: "3D Model not found" });
     }
 
     const glbUrl = `https://res.cloudinary.com/${process.env.CLOUDNAME}/raw/upload/${publicId}.glb`;
 
-    // Manual proxy with CORS fix
-    const response = await fetch(glbUrl);
+    // Fetch GLB as buffer (works on Vercel)
+    const cloudRes = await fetch(glbUrl);
 
-    if (!response.ok) {
-      return res.status(500).send("Error fetching GLB from Cloudinary");
+    if (!cloudRes.ok) {
+      return res.status(500).send("Failed to fetch GLB");
     }
 
+    const arrayBuffer = await cloudRes.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    // CORS fix + correct headers
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Content-Type", "model/gltf-binary");
+    res.setHeader("Content-Length", buffer.length);
 
-    response.body.pipe(res);
+    return res.send(buffer);
 
   } catch (err) {
-    console.error("3D model redirect error:", err);
-    res.status(500).send("Internal Server Error");
+    console.error("MODEL ROUTE ERROR:", err);
+    return res.status(500).send("Internal server error");
   }
 });
 
