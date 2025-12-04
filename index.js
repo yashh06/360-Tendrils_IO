@@ -205,30 +205,31 @@ app.get("/images/:productId/:skuCode/:imageNo", async (req, res) => {
    image_no = 9999 slot
    ===================================== */
 app.get("/models/:productId/:skuCode", async (req, res) => {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  const { productId, skuCode } = req.params;
 
   try {
-    const { productId, skuCode } = req.params;
+    const publicId = await getPublicIdFromDb(productId, skuCode, 9999);
 
-    // Fetch public_id from DB
-    const { data, error } = await supabase
-      .from("models")
-      .select("public_id")
-      .eq("product_id", productId)
-      .eq("sku_code", skuCode)
-      .single();
-
-    if (error || !data) {
-      return res.status(404).send("Model not found");
+    if (!publicId) {
+      return res.status(404).send("3D Model not found");
     }
 
-    const cloudinaryUrl = `https://res.cloudinary.com/${process.env.CLOUDNAME}/raw/upload/${data.public_id}`;
+    const glbUrl = `https://res.cloudinary.com/${process.env.CLOUDNAME}/raw/upload/${publicId}.glb`;
 
-    return res.redirect(302, cloudinaryUrl);
+    // Manual proxy with CORS fix
+    const response = await fetch(glbUrl);
+
+    if (!response.ok) {
+      return res.status(500).send("Error fetching GLB from Cloudinary");
+    }
+
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Content-Type", "model/gltf-binary");
+
+    response.body.pipe(res);
+
   } catch (err) {
-    console.error(err);
+    console.error("3D model redirect error:", err);
     res.status(500).send("Internal Server Error");
   }
 });
