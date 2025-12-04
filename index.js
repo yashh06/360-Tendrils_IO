@@ -205,26 +205,34 @@ app.get("/images/:productId/:skuCode/:imageNo", async (req, res) => {
    image_no = 9999 slot
    ===================================== */
 app.get("/models/:productId/:skuCode", async (req, res) => {
-	const { productId, skuCode } = req.params
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-	try {
-		// Look for special GLB row: image_no = 9999
-		const publicId = await getPublicIdFromDb(productId, skuCode, 9999)
+  try {
+    const { productId, skuCode } = req.params;
 
-		if (!publicId) {
-			return res.status(404).send("3D Model not found")
-		}
+    // Fetch public_id from DB
+    const { data, error } = await supabase
+      .from("models")
+      .select("public_id")
+      .eq("product_id", productId)
+      .eq("sku_code", skuCode)
+      .single();
 
-		// Cloudinary RAW endpoint
-		const glbUrl = `https://res.cloudinary.com/${process.env.CLOUDNAME}/raw/upload/${publicId}.glb`
+    if (error || !data) {
+      return res.status(404).send("Model not found");
+    }
 
-		return res.redirect(302, glbUrl)
+    const cloudinaryUrl = `https://res.cloudinary.com/${process.env.CLOUDNAME}/raw/upload/${data.public_id}`;
 
-	} catch (err) {
-		console.error("3D model redirect error:", err)
-		res.status(500).send("Internal Server Error")
-	}
-})
+    return res.redirect(302, cloudinaryUrl);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Internal Server Error");
+  }
+});
+
 
 /* =========== Health / Home =========== */
 
