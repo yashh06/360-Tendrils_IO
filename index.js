@@ -209,7 +209,7 @@ app.get("/models/:productId/:skuCode", async (req, res) => {
   const { productId, skuCode } = req.params;
 
   try {
-    // Fetch public_id for image_no = 9999
+    // fetch GLB record stored with image_no = 9999
     const { data, error } = await supabase
       .from("product")
       .select("public_id")
@@ -219,33 +219,34 @@ app.get("/models/:productId/:skuCode", async (req, res) => {
       .single();
 
     if (error || !data) {
-      return res.status(404).send("3D Model not found");
+      return res.status(404).send("Model not found");
     }
 
-    const publicId = data.public_id;
+    const publicId = data.public_id; // e.g. "71645/.../model"
+
+    // Cloudinary RAW URL (NO REDIRECTS)
     const glbUrl = `https://res.cloudinary.com/${process.env.CLOUDNAME}/raw/upload/${publicId}.glb`;
 
-    // Native fetch (Vercel supports it)
-    const cloudRes = await fetch(glbUrl);
+    // CORS FIX — model-viewer REQUIRE THIS!
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-    if (!cloudRes.ok) {
-      console.error(await cloudRes.text());
-      return res.status(500).send("Failed to fetch GLB from Cloudinary");
+    // Instead of redirect, stream the GLB directly!
+    const response = await fetch(glbUrl);
+
+    if (!response.ok) {
+      return res.status(500).send("Cloudinary fetch failed");
     }
 
-    const arrayBuffer = await cloudRes.arrayBuffer();
+    res.setHeader("Content-Type", "model/gltf-binary");
+    const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // CORS + correct headers
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Content-Type", "model/gltf-binary");
-    res.setHeader("Content-Length", buffer.length);
-
-    return res.send(buffer);
-
+    res.send(buffer);
   } catch (err) {
-    console.error("MODEL ROUTE ERROR:", err);
-    return res.status(500).send("Internal Server Error");
+    console.error("3D model route error:", err);
+    res.status(500).send("Server error");
   }
 });
 
