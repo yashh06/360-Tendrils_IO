@@ -266,6 +266,149 @@
 // const PORT = process.env.PORT || 3000
 // app.listen(PORT, () => console.log(`Image server running on Port:${PORT}`))
 
+// import express from "express"
+// import { Cloudinary } from "@cloudinary/url-gen"
+// import { createClient } from "@supabase/supabase-js"
+// import dotenv from "dotenv"
+
+// dotenv.config()
+// const app = express()
+
+// // --------------------
+// // Supabase
+// // --------------------
+// const supabase = createClient(
+//   process.env.SUPABASE_URL,
+//   process.env.SUPABASE_KEY
+// )
+
+// // --------------------
+// // Cloudinary (URL Gen)
+// // --------------------
+// const cld = new Cloudinary({
+//   cloud: { cloudName: process.env.CLOUDNAME },
+// })
+
+// // --------------------
+// // DB helper (images + GLB)
+// // --------------------
+// async function getPublicIdFromDb(sku, imageNo) {
+//   try {
+//     const { data, error } = await supabase
+//       .from("product")
+//       .select("public_id")
+//       .eq("sku", sku)
+//       .eq("image_no", Number(imageNo))
+//       .single()
+
+//     if (error) {
+//       console.error("DB fetch error:", error.message)
+//       return null
+//     }
+
+//     return data?.public_id ?? null
+//   } catch (err) {
+//     console.error("Unexpected DB error:", err)
+//     return null
+//   }
+// }
+
+// /* ===============================
+//    IMAGE ROUTE
+//    /images/:sku/:imageNo
+//    =============================== */
+// app.get("/images/:sku/:imageNo", async (req, res) => {
+//   const { sku, imageNo } = req.params
+//   const { w, h, c, q, watermark } = req.query
+
+//   try {
+//     let publicId = await getPublicIdFromDb(sku, imageNo)
+//     if (!publicId) return res.status(404).send("Image not found")
+
+//     let image = cld.image(publicId)
+
+//     // transformations
+//     const resize = []
+//     if (w) resize.push(`w_${w}`)
+//     if (h) resize.push(`h_${h}`)
+//     if (c) resize.push(`c_${c}`)
+//     if (resize.length) image = image.resize(resize.join(","))
+
+//     if (q) image = image.quality(q)
+
+//     // auto optimize
+//     image = image.format("auto").quality("auto")
+//     let imageUrl = image.toURL()
+
+//     // optional watermark
+//     if (watermark === "true") {
+//       const wm = "l_tendrilsio_logo_qnpef1,g_south_east,x_10,y_10,w_100"
+//       const parts = imageUrl.split("/upload/")
+//       if (parts.length === 2) {
+//         imageUrl = `${parts[0]}/upload/${wm}/${parts[1]}`
+//       }
+//     }
+
+//     res.redirect(302, imageUrl)
+//   } catch (err) {
+//     console.error("Image route error:", err)
+//     res.status(500).send("Internal Server Error")
+//   }
+// })
+
+// /* =====================================
+//    GLB MODEL ROUTE
+//    /models/:sku
+//    image_no = 9999
+//    ===================================== */
+// app.get("/models/:sku", async (req, res) => {
+//   const { sku } = req.params
+
+//   try {
+//     const publicId = await getPublicIdFromDb(sku, 9999)
+//     if (!publicId) return res.status(404).send("Model not found")
+
+//     const glbUrl = `https://res.cloudinary.com/${process.env.CLOUDNAME}/raw/upload/${publicId}.glb`
+
+//     // Required headers for 3D viewers
+//     res.setHeader("Access-Control-Allow-Origin", "*")
+//     res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS")
+//     res.setHeader("Access-Control-Allow-Headers", "Content-Type")
+//     res.setHeader("Content-Type", "model/gltf-binary")
+//     res.setHeader("Content-Disposition", "inline")
+
+//     const response = await fetch(glbUrl)
+//     if (!response.ok) {
+//       console.error("Cloudinary GLB fetch failed")
+//       return res.status(500).send("Cloudinary error")
+//     }
+
+//     const buffer = Buffer.from(await response.arrayBuffer())
+//     res.send(buffer)
+//   } catch (err) {
+//     console.error("GLB route error:", err)
+//     res.status(500).send("Server error")
+//   }
+// })
+
+// /* =========== Health / Home =========== */
+
+// app.get("/health", (_req, res) => {
+//   res.send("api server is healthy")
+// })
+
+// app.get("/", (_req, res) => {
+//   res.send("Home route of this API")
+// })
+
+// // --------------------
+// // Start server
+// // --------------------
+// const PORT = process.env.PORT || 3000
+// app.listen(PORT, () =>
+//   console.log(` Image server running on port ${PORT}`)
+// )
+
 import express from "express"
 import { Cloudinary } from "@cloudinary/url-gen"
 import { createClient } from "@supabase/supabase-js"
@@ -283,34 +426,33 @@ const supabase = createClient(
 )
 
 // --------------------
-// Cloudinary (URL Gen)
+// Cloudinary URL Gen
 // --------------------
 const cld = new Cloudinary({
-  cloud: { cloudName: process.env.CLOUDNAME },
+  cloud: { cloudName: process.env.CLOUDNAME }
 })
 
 // --------------------
-// DB helper (images + GLB)
+// Helpers
 // --------------------
-async function getPublicIdFromDb(sku, imageNo) {
+function decodeSku(param) {
   try {
-    const { data, error } = await supabase
-      .from("product")
-      .select("public_id")
-      .eq("sku", sku)
-      .eq("image_no", Number(imageNo))
-      .single()
-
-    if (error) {
-      console.error("DB fetch error:", error.message)
-      return null
-    }
-
-    return data?.public_id ?? null
-  } catch (err) {
-    console.error("Unexpected DB error:", err)
+    return decodeURIComponent(param)
+  } catch {
     return null
   }
+}
+
+async function getPublicIdFromDb(sku, imageNo) {
+  const { data, error } = await supabase
+    .from("product")
+    .select("public_id")
+    .eq("sku", sku)
+    .eq("image_no", Number(imageNo))
+    .single()
+
+  if (error) return null
+  return data?.public_id ?? null
 }
 
 /* ===============================
@@ -318,16 +460,18 @@ async function getPublicIdFromDb(sku, imageNo) {
    /images/:sku/:imageNo
    =============================== */
 app.get("/images/:sku/:imageNo", async (req, res) => {
-  const { sku, imageNo } = req.params
+  const sku = decodeSku(req.params.sku)
+  const imageNo = req.params.imageNo
+  if (!sku) return res.status(400).send("Invalid SKU")
+
   const { w, h, c, q, watermark } = req.query
 
   try {
-    let publicId = await getPublicIdFromDb(sku, imageNo)
+    const publicId = await getPublicIdFromDb(sku, imageNo)
     if (!publicId) return res.status(404).send("Image not found")
 
     let image = cld.image(publicId)
 
-    // transformations
     const resize = []
     if (w) resize.push(`w_${w}`)
     if (h) resize.push(`h_${h}`)
@@ -336,11 +480,9 @@ app.get("/images/:sku/:imageNo", async (req, res) => {
 
     if (q) image = image.quality(q)
 
-    // auto optimize
     image = image.format("auto").quality("auto")
     let imageUrl = image.toURL()
 
-    // optional watermark
     if (watermark === "true") {
       const wm = "l_tendrilsio_logo_qnpef1,g_south_east,x_10,y_10,w_100"
       const parts = imageUrl.split("/upload/")
@@ -352,25 +494,26 @@ app.get("/images/:sku/:imageNo", async (req, res) => {
     res.redirect(302, imageUrl)
   } catch (err) {
     console.error("Image route error:", err)
-    res.status(500).send("Internal Server Error")
+    res.status(500).send("Server error")
   }
 })
 
 /* =====================================
-   GLB MODEL ROUTE
+   GLB ROUTE
    /models/:sku
    image_no = 9999
    ===================================== */
 app.get("/models/:sku", async (req, res) => {
-  const { sku } = req.params
+  const sku = decodeSku(req.params.sku)
+  if (!sku) return res.status(400).send("Invalid SKU")
 
   try {
     const publicId = await getPublicIdFromDb(sku, 9999)
     if (!publicId) return res.status(404).send("Model not found")
 
-    const glbUrl = `https://res.cloudinary.com/${process.env.CLOUDNAME}/raw/upload/${publicId}.glb`
+    const glbUrl =
+      `https://res.cloudinary.com/${process.env.CLOUDNAME}/raw/upload/${publicId}.glb`
 
-    // Required headers for 3D viewers
     res.setHeader("Access-Control-Allow-Origin", "*")
     res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS")
     res.setHeader("Access-Control-Allow-Headers", "Content-Type")
@@ -378,10 +521,7 @@ app.get("/models/:sku", async (req, res) => {
     res.setHeader("Content-Disposition", "inline")
 
     const response = await fetch(glbUrl)
-    if (!response.ok) {
-      console.error("Cloudinary GLB fetch failed")
-      return res.status(500).send("Cloudinary error")
-    }
+    if (!response.ok) return res.status(500).send("Cloudinary fetch failed")
 
     const buffer = Buffer.from(await response.arrayBuffer())
     res.send(buffer)
@@ -391,20 +531,11 @@ app.get("/models/:sku", async (req, res) => {
   }
 })
 
-/* =========== Health / Home =========== */
+/* =========== Health =========== */
+app.get("/health", (_req, res) => res.send("OK"))
+app.get("/", (_req, res) => res.send("API running"))
 
-app.get("/health", (_req, res) => {
-  res.send("api server is healthy")
-})
-
-app.get("/", (_req, res) => {
-  res.send("Home route of this API")
-})
-
-// --------------------
-// Start server
-// --------------------
 const PORT = process.env.PORT || 3000
 app.listen(PORT, () =>
-  console.log(` Image server running on port ${PORT}`)
+  console.log(`🚀 API server running on port ${PORT}`)
 )
